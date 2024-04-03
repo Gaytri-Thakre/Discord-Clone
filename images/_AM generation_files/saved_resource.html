@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<!-- saved from url=(0011)about:blank -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head><body>
+	<script>
+	function ready(fn){ if (document.readyState !== 'loading'){ fn(); } else { document.addEventListener('DOMContentLoaded', fn); } }
+	const handleResize = function(){ window.parent.postMessage({ message: 'resize', targetid: 1 },'*'); }
+	window.addEventListener('resize', handleResize);
+	ready(handleResize);
+	window.oncontextmenu = function() { return false; };
+	</script>
+	
+</body></html>

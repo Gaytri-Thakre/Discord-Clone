@@ -1,0 +1,49 @@
+/* eslint-env node */
+// this file is not being transpiled so switch off some eslint
+/* eslint no-var: off */
+
+var isNode = new Function('try {return this===global;}catch(e){return false;}'); // eslint-disable-line no-new-func
+
+(function() {
+	var systemJSConfig = {
+		paths: {
+			systemjs: 'third_party/systemjs/dist/system.js',
+		},
+		map: {
+			'plugin-babel': 'third_party/plugin-babel/plugin-babel.js',
+			'systemjs-babel-build': 'third_party/plugin-babel/systemjs-babel-browser.js',
+			html: 'third_party/systemjs-plugin-html/html.js',
+		},
+		meta: {
+			'*.js': {
+				babelOptions: {},
+				authorization: true,
+			},
+		},
+		transpiler: 'plugin-babel',
+	};
+
+	// if (isNode()) {
+	// 	systemJSConfig.map.env = '../node_modules/babel-preset-env/src/index.js';
+	// 	systemJSConfig.meta['*.js'].babelOptions.presets = [
+	// 		['env', {
+	// 			targets: {
+	// 				browsers: ['last 4 versions', 'safari >= 9', 'ie >= 11'],
+	// 			},
+	// 		}],
+	// 	];
+	// }
+
+	// if we are running through node js, document will not be defined
+	systemJSConfig.baseURL = (!isNode() && document && document.currentScript) ? document.currentScript.src.replace('systemjs.conf.js', '').replace(document.origin, '') : '/static/multisim';
+	systemJSConfig.packages = {};
+	systemJSConfig.packages[(isNode() ? '.' : systemJSConfig.baseURL)] = { defaultExtension: 'js' };
+
+	// if we are running through node js, window will not be defined
+	if (!isNode()) {
+		window.System.config(systemJSConfig);
+	}
+	else {
+		global.System.config(systemJSConfig);
+	}
+})();

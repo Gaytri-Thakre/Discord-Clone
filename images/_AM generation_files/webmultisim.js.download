@@ -1,0 +1,944 @@
+// webmultisim.js
+// /////////////////////////////////////////////////////////////////////
+
+// this file is not being transpiled so switch off some eslint
+/* eslint no-var: off, object-shorthand: off, prefer-template: off, prefer-arrow-callback: off */
+
+// this is the first file loaded when our application gets loaded
+// this file is not transpiled, so you cannot use es6 and up features
+// since this file might get loaded in very old browsers it is better to at least have javascript that is compatible with being parsed by these very old browsers
+// for instance IE6 doesn't support dangling comma's and that is why the eslint rules for those are switched off (it would error out before even executing the script)
+
+var userAgent = ('navigator' in window && 'userAgent' in window.navigator && window.navigator.userAgent.toLowerCase()) || '';
+var appVersion = ('navigator' in window && 'appVersion' in window.navigator && window.navigator.appVersion.toLowerCase()) || '';
+
+// detect browser by detecting specific features for those browsers, only use this
+// when trying to work around bugs and feature detection doesn't work
+// Opera 8.0+
+var isOpera = (!!window.opr && !!window.opr.addons) || !!window.opera || window.navigator.userAgent.indexOf(' OPR/') >= 0,
+	// Firefox 1.0+
+	isFirefox = typeof InstallTrigger !== 'undefined',
+	// Firefox Private mode
+	isFirefoxPrivateMode = isFirefox && !navigator.serviceWorker, // no service workers in firefox private mode
+	// Internet Explorer 6-11
+	isOldIE = /* @cc_on!@*/false || !!document.documentMode,
+	// Internet Explorer 11 explicitly
+	isIE11 = !(window.ActiveXObject) && 'ActiveXObject' in window,
+	// Edge 20+
+	isEdge = !isOldIE && !!window.StyleMedia,
+	// internet explorer 6-edge
+	isIE = isOldIE || isEdge,
+	// Chrome 1+
+	isChrome = !!window.chrome && (window.navigator.vendor === 'Google Inc.') && !isOpera,
+	// Blink engine detection
+	isBlink = (isChrome || isOpera) && !!window.CSS,
+	// ios
+	isIos = /iphone/i.test(userAgent) || /ipad/i.test(userAgent) || /ipod/i.test(userAgent),
+	// android
+	isAndroid = /android/i.test(userAgent),
+	// linux
+	isLinux = /linux/i.test(appVersion),
+	// mac
+	isMac = /mac/i.test(appVersion),
+	// windows
+	isWindows = /win/i.test(appVersion),
+	// touch enabled
+	isTouch = 'ontouchstart' in window || ('DocumentTouch' in window && document instanceof window.DocumentTouch) || window.navigator.maxTouchPoints > 0 || window.navigator.msMaxTouchPoints > 0,
+	// on multisim.com
+	isMultisimCom = /multisim.com/.test(document.location.hostname),
+	// embeded in website
+	isWebsite = window.requestInfo !== undefined,
+	// local server, no website
+	isLocal = !isMultisimCom && !isWebsite,
+	// At least Safari 3+: "[object HTMLElementConstructor]"
+	isSafari = Object.prototype.toString.call(window.HTMLElement).indexOf('Constructor') > 0 || (!isChrome && !isOpera && window.webkitAudioContext !== undefined),
+	isIFrame = window.self !== window.top,
+	isTankless = isIFrame && (window.location.search.indexOf('iframeid=') != -1), // tankless mode means its in an iframe but not our usual embedded mode, has everything execpt the sharktank
+	isEmbedded = !isTankless && isIFrame,
+	isCrossDomain = false;
+try {
+	isCrossDomain = window.top.location.hostname !== document.location.hostname;
+} catch (e) {
+	// if above threw an exception we would be cross origin
+	isCrossDomain = true;
+}
+
+var startMultisim = function() {
+	window.multisim = window.multisim || /* istanbul ignore next */ {};
+	window.multisim.waitscreen = null;
+	const query = document.location.search.substring(1).split('&').reduce(function(p_Previous, p_Pair){ const items = p_Pair.split('='); if (items[0]){ p_Previous[items[0]] = (items.length > 1) ? items[1] : true; } return p_Previous; }, {});
+	const spinner_larger = {
+		ball_radius: 6,
+		font1: 24,
+		font2: 20,
+		radius: 26,
+		points: [
+			{ x: 26, y: 0 },
+			{ x: 44, y: 7 },
+			{ x: 52, y: 26 },
+			{ x: 44, y: 44 },
+			{ x: 26, y: 52 },
+			{ x: 7, y: 44 },
+			{ x: 0, y: 26 },
+			{ x: 7, y: 7 },
+		],
+	};
+	const spinner_small = {
+		ball_radius: 3,
+		font1: 20,
+		font2: 17,
+		radius: 15,
+		points: [
+			{ x: 15, y: 0 },
+			{ x: 26, y: 4 },
+			{ x: 31, y: 15 },
+			{ x: 26, y: 26 },
+			{ x: 15, y: 31 },
+			{ x: 4, y: 26 },
+			{ x: 0, y: 15 },
+			{ x: 4, y: 4 },
+		],
+	};
+
+	function isBrowserCompatible() {
+		var result = true;
+		var FailedOn = [];
+		var dummyDiv = document.createElement('div');
+
+		// this should take care of google bot, IE < 10, Safari < 4, chrome < 4, firefox < 3.5
+		if (!window.Worker) {
+			result = false;
+			FailedOn.push('window.Worker');
+		}
+		// IE < 11, Chrome < 38, Firefox < 13, Safari < 7.1
+		else if (!window.Map) {
+			result = false;
+			FailedOn.push('window.Map');
+		}
+		// Safari < 9, IE < 11, Chrome < 29, Firefox < 20
+		else if (dummyDiv.style.flex === undefined) {
+			result = false;
+			FailedOn.push('flex');
+		} else if (!('classList' in SVGElement.prototype)) {
+		   // IE 11
+		   result = false;
+		   FailedOn.push('svg classList');
+		} else if (!('closest' in Element.prototype)) {
+			// Edge < 15
+			result = false;
+			FailedOn.push('Element.closest');
+		} else {
+			try {
+				// safari < 10.1
+				eval('let foo = 0'); // eslint-disable-line
+			}
+			catch (e) {
+				result = false;
+				FailedOn.push('let');
+			}
+		}
+
+		return result;
+	}
+
+	if (!isBrowserCompatible()) {
+		// insert html into the page automatically
+		var style = document.createElement('link');
+		style.rel = 'stylesheet';
+		style.href = '/static/multisim/incompatiblestyle.css';
+		style.type = 'text/css';
+		document.getElementsByTagName('head')[0].appendChild(style);
+		document.body.innerHTML = '<div class="faketoolbar">' +
+			'   <img id="nilogo" src="/static/multisim/resources/images/nilogo.png">' +
+			'</div>' +
+			'<div class="messagecontainer">' +
+			'<div class="message">' +
+			'<div class="row"><div class="cell spacer">&nbsp;</div></div>' +
+			'<div class="row mainText"><div class="cell">Your browser is incompatible with Multisim Live.</div></div>' +
+			'<div class="row subText"><div class="cell">Use the Chrome™ web browser to best experience Multisim Live.</div></div>' +
+			'<div class="row"><div class="cell spacer paddedSpacer">&nbsp;</div></div>' +
+			'</div>' +
+			'<div class="footer">' +
+			'   <p>Chrome™ is a trademark of Google Inc.</p>' +
+			'<p>© 2017 National Instruments</p>' +
+			'</div>' +
+			'</div>';
+	} else {
+		(function() {
+			this.versionInfo = {
+				type: 'release',
+				version: { major: 2, minor: 15, patch: 0 },
+				date: new Date("Wed Apr 06 2022 10:53:08 GMT+0000 (UTC)") // eslint-disable-line comma-dangle
+			};
+
+			// add getters and setters like this, because old browsers don't support the direct in object syntax
+			Object.defineProperty(this.versionInfo, 'isDevelopment', {
+				get: function(){ return this.type === 'development'; } // eslint-disable-line comma-dangle
+			});
+			Object.defineProperty(this.versionInfo, 'isInternal', {
+				get: function(){ return this.isDevelopment || query.internal; } // eslint-disable-line comma-dangle
+			});
+			Object.defineProperty(this.versionInfo, 'isProduction', {
+				get: function(){ return !this.isDevelopment; } // eslint-disable-line comma-dangle
+			});
+		}).apply(window.multisim);
+
+		(function() {
+			var sessionStart = Date.now(); // Session start time
+			var useApplicationMonitoring = /multisim\.com/.test(document.location.host);
+
+			function ready(p_Callback) {
+				if (document.readyState !== 'loading') {
+					p_Callback();
+				} else {
+					document.addEventListener('DOMContentLoaded', p_Callback);
+				}
+			}
+
+			ready(function() {
+				var tempWebMultisims = document.querySelectorAll('web-multisim');
+				var multisimInstances = [];
+				for (var index = 0; index < tempWebMultisims.length; index++) { multisimInstances.push(tempWebMultisims[index]); }
+
+				var sendErrorToAPM = function(p_ErrorObject) {
+					if (useApplicationMonitoring && window.elasticApm) {
+						var apm = window.elasticApm;
+						if (window.requestInfo) {
+							// add user info
+							apm.setUserContext({
+								username: window.requestInfo.user // eslint-disable-line comma-dangle
+							});
+							// add non-indexed metadata
+							apm.setCustomContext({
+								userHome: window.requestInfo.userHome,
+								project: window.requestInfo.project,
+								project_url: window.requestInfo.project_url,
+								sessionTime: ((Date.now() - sessionStart) / 60000).toFixed(2), // Return session time in minutes
+								browserDetect: JSON.stringify(window.multisim.browserDetect),
+								undoInfo: window.multisim.tryCatchAll.undoInfo, // As got from undoRedo, what actions may have been done by the user
+							});
+							// add searchable metadata
+							apm.setTags({
+
+							});
+						}
+
+						// there seems to be a bug in opbeat that will fail to submit error when it fails on native because there is no line number and column,
+						// this code will add :1:1 to the stack trace to fake a line number and column
+						if (p_ErrorObject.stack) {
+							var stacktrace = p_ErrorObject.stack.split('\n');
+							stacktrace.forEach(function(p_Trace, p_StackIndex) {
+								if (/\s+at .*(\S+:\d+|\(native\))/.test(p_Trace) || /(^|@)\S+:\d+/.test(p_Trace)) {
+									if (p_Trace.indexOf(':') === -1) {
+										stacktrace[p_StackIndex] = p_Trace + ':1:1';
+									}
+								}
+							});
+
+							p_ErrorObject.stack = stacktrace.join('\n');
+						}
+
+						apm.captureError(p_ErrorObject);
+					}
+				};
+
+				// a way to silently fail, this will report opbeat data if enabled or else will just log to the console
+				// use this when something failed that should not have failed but where the end result will
+				// have no chance of corrupting the users data. For instance failing to load an resource where this is not as important
+				window.multisim.silentFail = function(p_Error) {
+					sendErrorToAPM(p_Error);
+					if (console) {
+						if (console.trace) {
+							console.trace(p_Error);
+						} else if (console.log) {
+							console.log(p_Error);
+						}
+					}
+				};
+
+				var getVersionString = function() {
+					return (window.multisim.versionInfo && window.multisim.versionInfo.version) ? window.multisim.versionInfo.version.major + '.' + window.multisim.versionInfo.version.minor + '.' + window.multisim.versionInfo.version.patch : 'unknown';
+				};
+
+				var showErrorWindow = function(p_Error) {
+					if (document && document.body) {
+						var exceptionDiv = document.body.querySelector('#nims_exception_dialog_area');
+
+						if (!exceptionDiv) {
+							exceptionDiv = document.createElement('div');
+							exceptionDiv.id = 'nims_exception_dialog_area';
+							exceptionDiv.classList.add('exception');
+							document.body.appendChild(exceptionDiv);
+							exceptionDiv.innerHTML = '<style>' +
+								'#nims_exception_dialog_area #icon { width: 40px; height: 40px; fill: #C42126; margin-right: 1.5em; } ' +
+								'#nims_exception_dialog_area { position: fixed; left: 0; right: 0; top: 0; bottom: 0; background: rgba(0, 0, 0, 0.1); display: -webkit-flex; display: flex; -webkit-flex-direction: row; flex-direction: row; -webkit-justify-content: center; justify-content: center; -webkit-align-content: center; align-content: center; -webkit-align-items: center; align-items: center;  }\n' +
+								"#nims_exception_dialog { font-family: 'Lato', 'Helvetica Neue', Helvetica, Arial, sans-serif; background: white; border: 2px solid #C42126; padding: 10px; box-shadow: 6px 6px 24px rgba(0, 0, 0, 0.7); margin-left: auto; margin-right: auto; max-width: 90%; min-width: 200px; max-height: 90%; display: webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; }\n" +
+								'#usermessage { padding: 30px; bottom: 0; text-align: left; color: #575757; }\n' +
+								'#messagearea { border: 2px solid #CBCBCB; display: webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; }\n' +
+								'#buttonarea { background: #ebeff2; width: 100%; height: 45px; position: relative; -webkit-flex: 0 0 45px; flex: 0 0 45px; display: -webkit-flex; display: flex; -webkit-justify-content: flex-end; justify-content: flex-end; }\n' +
+								'.button { text-decoration: none; text-align: center; font-family: inherit; background: #82878c; color: white; right: 10px; bottom: 10px; height: 25px; width: 90px; border: none; font-size: 17px; margin-right: 10px; margin-top: 10px; }\n' +
+								'#dialogtitle { display: -webkit-flex; display: flex; color: #C42126; text-align: center; padding: 20px; padding-bottom: 30px; font-size: 18px; line-height: 40px; }\n' +
+								'#nims_stack_dump { display: none; overflow: auto; white-space: nowrap; margin: 10px; padding: 10px; border: 1px solid #aaa; }\n' +
+								'</style>' +
+								"<div id='nims_exception_dialog'>" +
+								"<div id='dialogtitle'><svg id='icon'><path d='M20,4L1.5,36h37L20,4z M21.2,15l-0.3,11.5h-1.6L18.8,15H21.2z M20,31.4L20,31.4c-0.8,0-1.4-0.6-1.4-1.5 c0-0.9,0.6-1.5,1.4-1.5c0.9,0,1.4,0.6,1.4,1.5C21.4,30.8,20.9,31.4,20,31.4z'/></svg><span>An error occured in the program.</span></div>" +
+								"<div id='messagearea'>" +
+								"<div id='usermessage'>" +
+								'Save your design under a different name and refresh the browser.' +
+								'</div>' +
+								"<pre id='nims_stack_dump'></pre>" +
+								"<div id='buttonarea'>" +
+								"<!--<a href='http://digital.ni.com/express.nsf/bycode/exn6si' target='_blank' class='button'>Report</a>-->" +
+								"<input type='button' class='button' value='Close' id='closebtn'>" +
+								'</div>' +
+								'</div>' +
+								'</div>';
+
+							var handleCloseButton = function() {
+								exceptionDiv.parentNode.removeChild(exceptionDiv);
+							};
+
+							exceptionDiv.querySelector('#closebtn').addEventListener('touchstart', handleCloseButton);
+							exceptionDiv.querySelector('#closebtn').addEventListener('click', handleCloseButton);
+
+							document.body.appendChild(exceptionDiv);
+						}
+
+						if (window.multisim.versionInfo.isDevelopment) {
+							var stackDumpLocation = exceptionDiv.querySelector('#nims_stack_dump');
+							stackDumpLocation.style.display = 'block';
+
+							stackDumpLocation.innerHTML += ((p_Error) ? ('<br/>' + p_Error.toString().replace(/\n/gi, '<br/>').replace(/\s/gi, '&nbsp;') + '<br/>') : '') +
+								((p_Error && p_Error.stack) ? '<br/><strong>Stack trace:</strong><br/>' + p_Error.stack.replace(/\n/gi, '<br/>').replace(/\s/gi, '&nbsp;') : '') +
+								'<br/><br/><em>Check the console for additional information</em>';
+						}
+					}
+				};
+
+				var handleError = function(errorMsg, url, lineNumber, ColumnNumber, errorObject) {
+					if (!errorObject) {
+						errorObject = {
+							toString: function() { return ''; },
+							stack: errorMsg // eslint-disable-line comma-dangle
+						};
+					}
+					showErrorWindow(errorObject);
+					sendErrorToAPM(errorObject);
+				};
+
+				var registerGlobalErrorHandler = function() {
+					// call this after loading opbeat file
+					if (window.onerror !== handleError) {
+						window.onerror = handleError;
+					}
+				};
+
+				var scripts = document.getElementsByTagName('SCRIPT');
+				var path = null;
+				if (scripts && scripts.length > 0) {
+					for (var msScript in scripts) {
+						if (scripts.hasOwnProperty(msScript) && scripts[msScript].src && scripts[msScript].src.match(/\/webmultisim\.js$/)) {
+							path = scripts[msScript].src.replace(/(.*)\/webmultisim\.js$/, '$1').replace(document.location.origin, '') + '/';
+							break;
+						}
+					}
+				}
+
+				// find the path relative to the server root for this javascript file and use that as the base for all other paths
+				var serverPath = path || '';
+
+				if (useApplicationMonitoring) {
+					var opBeat = document.createElement('script');
+					opBeat.setAttribute('src', serverPath + 'third_party/elastic-apm-js-base/dist/bundles/elastic-apm-js-base.umd.min.js');
+					document.getElementsByTagName('head')[0].appendChild(opBeat);
+
+					opBeat.onload = function() {
+						var apm = window.elasticApm;
+						if (apm && apm.init) {
+							var serviceName = 'Multisim Live - Shark';
+							if (/dev/.test(document.location.host)) {
+								serviceName = 'Multisim Live - Shark Dev';
+							} else if (/staging/.test(document.location.host)) {
+								serviceName = 'Multsim Live - Shark Staging';
+							} else if (/www\.multisim\.com/.test(document.location.host)) {
+								serviceName = 'Multisim Live - Shark Production';
+							}
+
+							apm.init({
+								serviceName: serviceName,
+								serverUrl: 'https://ddacd210add074f96e5e687a1.us-west-1.lb.production.aws.cloud.es.io:8200',
+								serviceVersion: getVersionString(),
+							});
+						}
+						registerGlobalErrorHandler();
+					};
+					opBeat.onerror = registerGlobalErrorHandler;
+
+					/*
+					 might want to do this as part of our upload script to s3 when we have one
+					 curl https://intake.opbeat.com/api/v1/organizations/49188657ea904768938a5887af3d17ce/apps/175ee65b3c/releases/ \
+					 -H "Authorization: Bearer 0fe80d3bc138d2def2c5e0b9d3acda0bf1fc2a36" \
+					 -d rev=`git log -n 1 --pretty=format:%H` \
+					 -d branch=`git rev-parse --abbrev-ref HEAD` \
+					 -d status=completed
+					 */
+				} else {
+					registerGlobalErrorHandler();
+				}
+
+
+				// register our own exception catcher
+				// this will catch an exception and put up a error box
+				// todo: for a deployed system we could skip putting up the error box and make it do something else in the future
+				window.multisim.tryCatchAll = function(p_Content, p_This) {
+					var result = null;
+					try {
+						p_Content.apply(p_This || window.multisim);
+					} catch (e) {
+						result = e;
+						if (console) {
+							if (console.trace) {
+								console.trace(e);
+							} else if (console.log) {
+								console.log(e);
+							}
+						}
+						showErrorWindow(e);
+						sendErrorToAPM(e);
+					}
+					return result;
+				};
+
+				window.multisim.browserDetect = {
+					isOpera: isOpera,
+					isFirefox: isFirefox,
+					isFirefoxPrivateMode: isFirefoxPrivateMode,
+					isSafari: isSafari,
+					isOldIE: isOldIE,
+					isIE11: isIE11,
+					isEdge: isEdge,
+					isIE: isIE,
+					isChrome: isChrome,
+					isBlink: isBlink,
+					isIos: isIos,
+					isAndroid: isAndroid,
+					isLinux: isLinux,
+					isMac: isMac,
+					isWindows: isWindows,
+					isTouch: isTouch,
+					isMultisimCom: isMultisimCom,
+					isWebsite: isWebsite,
+					isLocal: isLocal,
+					isIFrame: isIFrame,
+					isEmbedded: isEmbedded,
+					isTankless: isTankless,
+					isCrossDomain: isCrossDomain,
+				};
+
+				var webMultisims = document.querySelectorAll('web-multisim');
+
+				for (var instanceIndex = 0; instanceIndex < webMultisims.length; instanceIndex++) {
+					var classList = webMultisims[instanceIndex].classList;
+
+					// opera
+					if (isOpera) {
+						classList.add('opera');
+					}
+					// Firefox 1.0+
+					if (isFirefox) {
+						classList.add('firefox');
+					}
+					// At least Safari 3+
+					if (isSafari) {
+						classList.add('safari');
+					}
+					// internet explorer 6-edge
+					if (isIE) {
+						classList.add('ie');
+					}
+					// Edge specifically
+					if (isEdge) {
+						classList.add('edge');
+					}
+					// Chrome 1+
+					if (isChrome || isBlink) {
+						classList.add('chrome');
+					}
+					// blink specifically
+					if (isBlink) {
+						classList.add('blink');
+					}
+
+					if (isIos) {
+						classList.add('ios');
+					}
+					if (isAndroid) {
+						classList.add('android');
+					}
+					if (isLinux) {
+						classList.add('linux');
+					}
+					if (isMac) {
+						classList.add('mac');
+					}
+					if (isWindows) {
+						classList.add('windows');
+					}
+					if (isTouch) {
+						classList.add('touch');
+					}
+					if (isMultisimCom) {
+						classList.add('multisimcom');
+					}
+					if (isWebsite) {
+						classList.add('website');
+					}
+					if (isLocal) {
+						classList.add('local');
+					}
+					if (isIFrame) {
+						classList.add('iframe');
+					}
+					if (isEmbedded) {
+						classList.add('embedded');
+					}
+					if (isTankless) {
+						classList.add('tankless');
+					}
+					if (isCrossDomain) {
+						classList.add('crossdomain');
+					}
+				}
+
+				var waitScreenContent = '<style>' +
+					'       .fullscreen {' +
+					'			position: absolute;' +
+					'			top: 0;' +
+					'			left: 0;' +
+					'			right: 0;' +
+					'			bottom: 0;' +
+					'		}' +
+					'		.waitScreenOverlay {' +
+					'			pointer-events: none;' +
+					'			cursor: wait;' +
+					'			z-index: 10;' +
+					'           overflow: hidden;' +
+					'			font-family: \'Lato\', \'Helvetica Neue\', Helvetica, Arial, sans-serif;' +
+					'			transition: opacity 2s' +
+					'		}' +
+					'	' +
+					'		.waitScreenOverlay .contentsection,' +
+					'		{' +
+					'			overflow: hidden;' +
+					'		}' +
+					'		' +
+					'		.waitScreenOverlay .smokedglass {' +
+					'			position: absolute;' +
+					'			left: 0;' +
+					'			top: 0;' +
+					'			right: 0;' +
+					'			bottom: 0;' +
+					'			pointer-events: visible;' +
+					'			opacity: 0.8;' +
+					'			background-color: #9e9995;' +
+					'		}' +
+					'		.waitScreenContainer {' +
+					'			z-index: 10;' +
+					'		}' +
+					'		.faketoolbar {' +
+					'			position: relative;' +
+					'			width: 100%;' +
+					'			height: 96px;' +
+					'			background: #044123;' +
+					'			display: -webkit-flex;' +
+					'			display: flex;' +
+					'			-webkit-justify-content: center;' +
+					'			justify-content: center;' +
+					'			-webkit-align-content: center;' +
+					'			align-content: center;' +
+					'			-webkit-align-items: center;' +
+					'			align-items: center;' +
+					'		}' +
+					'		#nilogo {' +
+					'			height: 50%;' +
+					'		}' +
+					'		.waitscreenbackgroundDiv {' +
+					'			position: relative;' +
+					'			width: 100%;' +
+					'			top: 30px;' +
+					'		}' +
+					'		.waitscreenbackgroundid {' +
+					'			position: relative;' +
+					'			width: 50%;' +
+					'			background-color: white;' +
+					'		}' +
+					'		.waitScreenDiv {' +
+					'			position: relative;' +
+					'			width: 64px;' +
+					'			height: 64px;' +
+					'			left: 48%;' +
+					'			top: 50px;' +
+					'		}' +
+					'		.waitScreenTextDiv {' +
+					'			position: relative;' +
+					'			width: 100%;' +
+					'			height: 64px;' +
+					'			top: 50px;' +
+					'		}' +
+					'		.waitText {' +
+					'			margin-left: auto;' +
+					'			margin-right: auto;' +
+					'			color: #ffffff;' +
+					'			text-align: center;' +
+					'		}' +
+					'		.waitScreenText {' +
+					'			font-size: 20px;' +
+					'			font-weight: 600;' +
+					'			margin-top: 10px;' +
+					'			margin-bottom: 0px;' +
+					'		}' +
+					'		.waitScreenSubText {' +
+					'			font-size: 17px;' +
+					'			font-weight: 400;' +
+					'			margin-top: 10px;' +
+					'			margin-bottom: 0px;' +
+					'		}' +
+					'		.spincontainer {' +
+					'			position: relative;' +
+					'		}' +
+					'  		@-webkit-keyframes circle-animate {' +
+					'    		0% {' +
+					'				opacity: 1' +
+					'    		}' +
+					'    		75% {' +
+					'				opacity: 0' +
+					'    		}' +
+					'    		100% {' +
+					'				opacity: 0' +
+					'    		}' +
+					'  		}' +
+					' 		@keyframes circle-animate {' +
+					'    		0% {' +
+					'				opacity: 1' +
+					'    		}' +
+					'    		75% {' +
+					'				opacity: 0' +
+					'    		}' +
+					'    		100% {' +
+					'				opacity: 0' +
+					'    		}' +
+					'  		}' +
+					'		.spinner-circle {' +
+					'			background: white;' +
+					'			opacity: 0;' +
+					'			box-sizing: border-box;' +
+					'			border-radius: 4px;' +
+					'			width: 8px;' +
+					'			height: 8px;' +
+					'			-webkit-animation: circle-animate 1s linear infinite;' +
+					'			animation: circle-animate 1s linear infinite;' +
+					'		}' +
+					'		.spinner-circle:nth-child(1) {' +
+					'			-webkit-animation-delay: 0;' +
+					'			animation-delay: 0;' +
+					'		}' +
+					'		.spinner-circle:nth-child(2) {' +
+					'			-webkit-animation-delay: 125ms;' +
+					'			animation-delay: 125ms;' +
+					'		}' +
+					'		.spinner-circle:nth-child(3) {' +
+					'			-webkit-animation-delay: 250ms;' +
+					'			animation-delay: 250ms;' +
+					'		}' +
+					'		.spinner-circle:nth-child(4) {' +
+					'			-webkit-animation-delay: 375ms;' +
+					'			animation-delay: 375ms;' +
+					'		}' +
+					'		.spinner-circle:nth-child(5) {' +
+					'			-webkit-animation-delay: 500ms;' +
+					'			animation-delay: 500ms;' +
+					'		}' +
+					'		.spinner-circle:nth-child(6) {' +
+					'			-webkit-animation-delay: 625ms;' +
+					'			animation-delay: 625ms;' +
+					'		}' +
+					'		.spinner-circle:nth-child(7) {' +
+					'			-webkit-animation-delay: 750ms;' +
+					'			animation-delay: 750ms;' +
+					'		}' +
+					'		.spinner-circle:nth-child(8) {' +
+					'			-webkit-animation-delay: 875ms;' +
+					'			animation-delay: 875ms;' +
+					'		}' +
+					'    </style>' +
+					'	<div class="waitScreenOverlay fullscreen overlay">' +
+					'		<div class="smokedglass fullscreen"></div>' +
+					'		<div class="contentsection fullscreen">' +
+					'			<div class="waitScreenContainer fullscreen">' +
+					'				<div class="faketoolbar">' +
+					'					<img id="nilogo" src="' + serverPath + 'resources/images/nilogo.png">' +
+					'				</div>' +
+					'				<div class="waitscreenbackgroundDiv">' +
+					'					<img class="waitscreenbackgroundid">' +
+					'				</div>' +
+					'				<div class="waitScreenDiv">' +
+					'					<div class="spincontainer">' +
+					'  						<div class="spinner-circle" style="position: absolute; left: 20px; top:    0"></div>' +
+					'  						<div class="spinner-circle" style="position: absolute; left: 33px; top:  5px"></div>' +
+					'  						<div class="spinner-circle" style="position: absolute; left: 40px; top: 20px"></div>' +
+					'  						<div class="spinner-circle" style="position: absolute; left: 33px; top: 33px"></div>' +
+					'  						<div class="spinner-circle" style="position: absolute; left: 20px; top: 40px"></div>' +
+					'  						<div class="spinner-circle" style="position: absolute; left:  5px; top: 33px"></div>' +
+					'  						<div class="spinner-circle" style="position: absolute; left:    0; top: 20px"></div>' +
+					'  						<div class="spinner-circle" style="position: absolute; left:  5px; top:  5px"></div>' +
+					'					</div>' +
+					'				</div>' +
+					'				<div class="waitScreenTextDiv">' +
+					'					<p class="waitScreenText waitText"></p>' +
+					'					<p class="waitScreenSubText waitText"></p>' +
+					'				</div>' +
+					'			</div>' +
+					'		</div>' +
+					'	</div>';
+
+				window.createWaitScreen = function(p_MultisimInstance) {
+					var container = p_MultisimInstance.parentNode;
+					var waitOverlay = document.createElement('div');
+
+					waitOverlay.innerHTML = waitScreenContent;
+
+					var waitTimeoutID = null;
+					var waitQueue = [];
+					var waitScreenOverlay = waitOverlay.querySelector('.waitScreenOverlay');
+					var waitScreenText = waitOverlay.querySelector('.waitScreenText');
+					var waitScreenSubText = waitOverlay.querySelector('.waitScreenSubText');
+					var waitScreenContainer = waitOverlay.querySelector('.waitScreenDiv');
+					var waitScreenTextDiv = waitOverlay.querySelector('.waitScreenTextDiv');
+					var waitScreenBackgroundDiv = waitOverlay.querySelector('.waitscreenbackgroundDiv');
+					var waitScreenBackground = waitOverlay.querySelector('.waitscreenbackgroundid');
+					var showBackgroundSvgFile = false;
+
+					var show = function() {
+						waitScreenBackgroundDiv.style.display = '';
+						waitScreenContainer.style.display = '';
+						waitScreenOverlay.style.opacity = 1;
+						waitScreenOverlay.style.display = '';
+					};
+					var close = function() {
+						waitScreenBackgroundDiv.style.display = 'none';
+						waitScreenContainer.style.display = 'none';
+						waitScreenOverlay.style.opacity = 0;
+						setTimeout(function() {
+							waitScreenOverlay.style.display = 'none';
+						}, 2000);
+					};
+
+					var updateLayout = function(p_clientWidth, p_clientHeight) {
+						if (showBackgroundSvgFile && p_clientWidth > 1 && p_clientHeight > 1) {
+							waitScreenBackgroundDiv.style.display = '';
+							waitScreenBackground.style.display = '';
+							var rate = Math.max(0.05, Math.min(0.25, 0.000175438 * p_clientWidth)); // 0.000175438 = (0.25 - 0.05) / (1600px - 460px), rate is a ratio for calculating a margin
+							var gap_w = Math.max(30, rate * p_clientWidth);
+							var gap_h = 30;
+							var gap_h_other = 50;
+							var width = p_clientWidth - (2 * rate * p_clientWidth);
+							var height = 0.75 * width; 	// keep a ratio of 3 / 4
+							if (p_clientHeight < gap_h + height + 250) { // at this time, we need to adjust the vertical layout
+								height = p_clientHeight - (gap_h + 250);
+								if (height < 25) {
+									waitScreenBackgroundDiv.style.display = 'none';
+									waitScreenBackground.style.display = 'none';
+								} else {
+									width = 1.3333333 * height;	// keep a ratio of 3 / 4
+									gap_w = (p_clientWidth - width) / 2.0;
+								}
+							}
+
+							waitScreenBackgroundDiv.style.top = `${gap_h}px`;
+							waitScreenBackground.style.left = `${gap_w}px`;
+							waitScreenBackground.style.width = `${width}px`;
+							waitScreenBackground.style.height = `${height}px`;
+
+							waitScreenContainer.style.position = 'relative';
+							waitScreenContainer.style.top = `${gap_h_other}px`;
+							waitScreenTextDiv.style.position = 'relative';
+							waitScreenTextDiv.style.top = `${1.2 * gap_h_other}px`;
+						} else {
+							waitScreenBackgroundDiv.style.display = 'none';
+							waitScreenBackground.style.display = 'none';
+							waitScreenContainer.style.position = 'absolute';
+							waitScreenContainer.style.top = '48%';
+							waitScreenTextDiv.style.position = 'absolute';
+							waitScreenTextDiv.style.top = '60%';
+						}
+
+						var spinner = waitScreenContainer.firstElementChild;
+						if (spinner && spinner.childElementCount === 8) {
+							for (var i = 0, child = spinner.firstElementChild; child; i += 1, child = child.nextElementSibling) {
+								child.style['border-radius'] = `${showBackgroundSvgFile ? spinner_small.ball_radius : spinner_larger.ball_radius}px`;
+								child.style['width'] = `${showBackgroundSvgFile ? 2 * spinner_small.ball_radius : 2 * spinner_larger.ball_radius}px`;
+								child.style['height'] = `${showBackgroundSvgFile ? 2 * spinner_small.ball_radius : 2 * spinner_larger.ball_radius}px`;
+								child.style['left'] = `${showBackgroundSvgFile ? spinner_small.points[i].x : spinner_larger.points[i].x}px`;
+								child.style['top'] = `${showBackgroundSvgFile ? spinner_small.points[i].y : spinner_larger.points[i].y}px`;
+							}
+						}
+						var spinnerSize = showBackgroundSvgFile ? 2 * (spinner_small.radius + spinner_small.ball_radius) : 2 * (spinner_larger.radius + spinner_larger.ball_radius);
+						waitScreenContainer.style.width = `${spinnerSize}px`;
+						waitScreenContainer.style.height = `${spinnerSize}px`;
+						if (p_clientWidth > 1) {
+							var spinnerPos = (p_clientWidth / 2.0) - (showBackgroundSvgFile ? spinner_small.radius : spinner_larger.radius);
+							waitScreenContainer.style.left = `${spinnerPos}px`;
+						}
+						waitScreenText.style['font-size'] = `${showBackgroundSvgFile ? spinner_small.font1 : spinner_larger.font1}px`;
+						waitScreenSubText.style['font-size'] = `${showBackgroundSvgFile ? spinner_small.font2 : spinner_larger.font2}px`;
+					};
+
+					window.addEventListener('resize', (evt) => {
+						var dimensions = {
+							height: (evt.srcElement || evt.currentTarget).innerHeight,
+							width: (evt.srcElement || evt.currentTarget).innerWidth,
+						};
+						updateLayout(dimensions.width, dimensions.height);
+					}, true);
+
+					p_MultisimInstance.waitscreen = {
+						updateWaitTexts: function(p_Info) {
+							if (waitQueue.indexOf(p_Info) !== -1) {
+								waitScreenText.innerHTML = p_Info.message || '';
+								waitScreenSubText.innerHTML = p_Info.submessage || '';
+							}
+						},
+						handleWaitStart: function(p_Info, p_delayTime) {
+							if (showBackgroundSvgFile) {
+								const myProject_ID = window.requestInfo ? window.requestInfo.project : null;
+								const myProjectGuidAndFileName = (window.requestInfo && window.requestInfo.project_url) ? window.requestInfo.project_url.match(/[^\\/]+/g) : null;
+								const myProject_Name = (myProjectGuidAndFileName && myProjectGuidAndFileName.length > 2) ? `${myProjectGuidAndFileName[1]}-thumbnailcircuit/${myProjectGuidAndFileName[2]}.svg`.toLowerCase() : null;
+								showBackgroundSvgFile = (myProject_ID !== null && myProject_ID.length > 0 && myProjectGuidAndFileName !== null && myProject_Name !== null);
+								waitScreenBackground.src = showBackgroundSvgFile ? `/api/v1/image/${myProject_ID}/${myProject_Name}` : '';
+								waitScreenBackground.addEventListener('load', function() {
+									waitScreenSubText.innerHTML = '';
+								});
+							}
+							else {
+								waitScreenBackground.src = '';
+							}
+							updateLayout(waitScreenOverlay.clientWidth, waitScreenOverlay.clientHeight);
+
+							if (waitQueue.indexOf(p_Info) === -1) {
+								waitQueue.push(p_Info);
+							}
+
+							this.updateWaitTexts(p_Info);
+
+							if (!waitTimeoutID) {
+								// don't show anything until at least the given timeout has been reached
+								waitTimeoutID = setTimeout(function() {
+									show();
+								}, p_delayTime || 1000);
+							}
+						},
+						handleWaitStop: function(p_Info) {
+							showBackgroundSvgFile = false;
+							waitQueue.splice(waitQueue.indexOf(p_Info), 1);
+
+							if (!waitQueue.length) {
+								clearTimeout(waitTimeoutID);
+								waitTimeoutID = null;
+								close();
+							} else {
+								this.updateWaitTexts(waitQueue[waitQueue.length - 1]);
+							}
+						},
+						appStartInfo: { message: 'Initializing Multisim Live ...', submessage: 'Waiting for awesome' },
+						showBackgroundSvgFile: function() { showBackgroundSvgFile = true; },
+					};
+
+					container.insertBefore(waitOverlay, p_MultisimInstance);
+					p_MultisimInstance.waitscreen.showBackgroundSvgFile();
+					p_MultisimInstance.waitscreen.handleWaitStart(p_MultisimInstance.waitscreen.appStartInfo);
+				};
+
+				var loadNeededScripts = function() {
+					var systemjsscript = document.createElement('script');
+					systemjsscript.setAttribute('src', serverPath + 'third_party/systemjs/dist/system.js');
+					systemjsscript.addEventListener('load', function() {
+						var systemjsconfig = document.createElement('script');
+						systemjsconfig.setAttribute('src', serverPath + 'systemjs.conf.js');
+						systemjsconfig.addEventListener('load', function() {
+							// web components
+							var polymer = document.createElement('script');
+							polymer.setAttribute('src', serverPath + 'third_party/webcomponentsjs/webcomponents-lite.min.js');
+							polymer.addEventListener('load', function() {
+								multisimInstances.forEach(window.createWaitScreen);
+
+								// if we are running development, load the web component js file
+								if (window.multisim.versionInfo.isDevelopment) {
+									window.SystemJS['import']('components/web-multisim/web-multisim');
+									// document.getElementsByTagName('head')[0].appendChild(webMultisimElement);
+								} else { // load the compiled multisim.html and multisim.js file
+									// first load the html for the web components
+									var webMultisimElement = document.createElement('link');
+									webMultisimElement.setAttribute('href', serverPath + 'components/web-multisim/multisim.html');
+									webMultisimElement.setAttribute('rel', 'import');
+									document.getElementsByTagName('head')[0].appendChild(webMultisimElement);
+
+									// load the multisim.js file after the html finished loading
+									webMultisimElement.addEventListener('load', function() {
+										// load the multisim.js file here so it loads it properly from the app cache
+										var webMultisimScript = document.createElement('script');
+										webMultisimScript.setAttribute('src', serverPath + 'components/web-multisim/multisim.js');
+
+										document.getElementsByTagName('head')[0].appendChild(webMultisimScript);
+									});
+								}
+							});
+							document.getElementsByTagName('head')[0].appendChild(polymer);
+						});
+						document.getElementsByTagName('head')[0].appendChild(systemjsconfig);
+					});
+					document.getElementsByTagName('head')[0].appendChild(systemjsscript);
+				};
+
+				// add the needed third party libraries dynamically
+				loadNeededScripts();
+			});
+		})();
+	}
+};
+
+// check the appcache status.  If there is no app cache then start the app.  If its out of date, wait for it to finish and reload.  This ensures that we never
+// start with out of date files.  We need to wait for the cache to load before we load the app, becuase not all of our JS files are cached, and
+// further if we loaded out-of-date appcache js files but we are still online then we risk errors due to missing resources and file format changes
+// which could lead to unpredictable random errors.  However if there is no update, which will be the most common case, then that triggers almost instantly
+// Note that in firefox Private mode window.applicationCache is still reported by the events are never called, so we need to avoid it.  Also we have added
+// a timeout here just to ensure future browser changes to dont prevent us from loading (see DE14931).
+if (window.applicationCache && !isFirefoxPrivateMode) {
+	const appCacheOutOfDate = function() {
+		if (window.applicationCache.status === window.applicationCache.OBSOLETE || window.applicationCache.status === window.applicationCache.UPDATEREADY) {
+			window.location.reload();
+		}
+	};
+	const appCacheValid = function() {
+		// we dont expect to get more than one event that will actually start multisim... but just to be safe dont risk it
+		if (startMultisim) {
+			var doStartMultisim = startMultisim;
+			startMultisim = null;
+			doStartMultisim();
+		}
+	};
+	window.applicationCache.addEventListener('cached', appCacheValid);
+	window.applicationCache.addEventListener('error', appCacheValid);
+	window.applicationCache.addEventListener('noupdate', appCacheValid);
+
+	window.applicationCache.addEventListener('obsolete', appCacheOutOfDate);
+	window.applicationCache.addEventListener('updateready', appCacheOutOfDate);
+
+	setTimeout(appCacheValid, 10000);
+
+	// check now just in case we missed the event before the listener was added
+	if (window.applicationCache.status === window.applicationCache.OBSOLETE || window.applicationCache.status === window.applicationCache.UPDATEREADY) {
+		appCacheOutOfDate();
+	}
+} else {
+	startMultisim();
+}
