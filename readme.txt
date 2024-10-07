@@ -1,77 +1,23 @@
-Add font extensions in main.css file and tailwind.config.css
+# Discord Clone
 
-First section:
+This is a static website created using HTML and Tailwind CSS, replicating the design and functionality of Discord.
 
-div{
-    nav{
-        logo{
+## Live Demo
 
-        }
-        ul{
+You can view the live demo of the project at the following URL: [Discord Clone Demo](https://gaytri-thakre.github.io/Discord-Clone/)
 
-        }
-        button{
+## Features
 
-        }
-        hidden-hamburgerbutton{
+- Responsive design
+- Clean and modern UI
+- Built with Tailwind CSS for styling
+- Easy to navigate
 
-        }
-    }
-}
+## Installation
 
-Second section:
-div{
-    images(absolute position)
-    div{
-        heading{
+To view the project locally, clone the repository and open the `index.html` file in your browser:
 
-        }
-        para{
-
-        }
-        div{
-            button1
-            button2
-        }
-    }
-}
-
-
-1st section:
-section{
-    div{
-        div{
-            image
-        }
-        div{
-            h1{
-
-            }
-            p{
-
-            }
-        }
-    }
-}
-
-4th section
-div{
-    h1{
-
-    }
-    p{
-
-    }
-    img{
-
-    }
-    img{
-
-    }
-    para{
-
-    }
-    button{
-        
-    }
-}
+```bash
+git clone https://github.com/<your-username>/Discord-Clone.git
+cd Discord-Clone
+open index.html
